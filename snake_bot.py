@@ -1,4 +1,6 @@
 import os
+import sqlite3
+import logging
 from dotenv import load_dotenv
 from telegram import Update, InlineQueryResultGame
 from telegram.ext import (
@@ -9,78 +11,145 @@ from telegram.ext import (
     InlineQueryHandler
 )
 
+# Настройка логов
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    filename='bot_errors.log',
+    filemode='a'
+)
+logger = logging.getLogger(__name__)
+
+
+# Инициализация БД
+def init_db():
+    try:
+        conn = sqlite3.connect('scores.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT,
+                score INTEGER NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+    except Exception as e:
+        logger.error(f"DB Error: {e}", exc_info=True)
+    finally:
+        conn.close()
+
+
+init_db()
+
 # Загрузка токена
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-if not TOKEN:
-    raise ValueError("Токен не найден! Проверьте файл .env")
-
 
 async def start(update: Update, context: CallbackContext) -> None:
-    """Обработчик команды /start"""
-    await update.message.reply_text(
-        "🐍 Добро пожаловать в Змейку!\n"
-        "Используйте команды:\n"
-        "/play - Начать игру\n"
-        "/help - Помощь"
-    )
+    try:
+        await update.message.reply_text(
+            "🐍 Змейка 2.0\n"
+            "Команды:\n"
+            "/play - Играть\n"
+            "/top - Топ игроков\n"
+            "/help - Помощь"
+        )
+    except Exception as e:
+        logger.error(f"Start error: {e}", exc_info=True)
 
 
 async def play(update: Update, context: CallbackContext) -> None:
-    """Отправка игры"""
     try:
         await update.message.reply_game(game_short_name="snake_game")
+        logger.info(f"User {update.effective_user.id} started game")
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Ошибка: {str(e)}")
+        logger.error(f"Play error: {e}", exc_info=True)
+        await update.message.reply_text("⚠️ Ошибка запуска игры")
 
 
-async def handle_game(update: Update, context: CallbackContext) -> None:
-    """Обработчик нажатия на игру"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🎮 Загружаем игру...")
+async def top_players(update: Update, context: CallbackContext) -> None:
+    try:
+        conn = sqlite3.connect('scores.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT username, MAX(score) as max_score 
+            FROM scores 
+            GROUP BY user_id 
+            ORDER BY max_score DESC 
+            LIMIT 10
+        ''')
+        results = cursor.fetchall()
+
+        if not results:
+            await update.message.reply_text("🏆 Рейтинг пуст!")
+            return
+
+        response = "🏆 Топ игроков:\n"
+        for i, (username, score) in enumerate(results, 1):
+            response += f"{i}. {username}: {score}\n"
+
+        await update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Top players error: {e}", exc_info=True)
+        await update.message.reply_text("⚠️ Ошибка загрузки рейтинга")
+    finally:
+        conn.close()
 
 
-async def inline_query(update: Update, context: CallbackContext) -> None:
-    """Inline-режим"""
-    await update.inline_query.answer([
-        InlineQueryResultGame(
-            id="1",
-            game_short_name="snake_game"
-        )
-    ])
+async def game_callback(update: Update, context: CallbackContext) -> None:
+    try:
+        query = update.callback_query
+        await query.answer()
+
+        if query.game_short_name == "snake_game" and hasattr(query, 'game_score'):
+            save_score(
+                query.from_user.id,
+                query.from_user.username or query.from_user.first_name,
+                query.game_score
+            )
+    except Exception as e:
+        logger.error(f"Callback error: {e}", exc_info=True)
 
 
-def main() -> None:
-    """Запуск бота"""
-    # Проверка токена перед запуском
-    if not TOKEN or len(TOKEN) < 30:
-        print("❌ Неверный токен! Проверьте .env файл")
+def save_score(user_id: int, username: str, score: int):
+    try:
+        conn = sqlite3.connect('scores.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO scores (user_id, username, score)
+            VALUES (?, ?, ?)
+        ''', (user_id, username, score))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Save score error: {e}", exc_info=True)
+    finally:
+        conn.close()
+
+
+def main():
+    if not TOKEN:
+        logger.critical("Token not found! Check .env file")
         return
 
     try:
-        application = Application.builder().token(TOKEN).build()
+        app = Application.builder().token(TOKEN).build()
 
-        # Регистрация обработчиков
-        handlers = [
-            CommandHandler("start", start),
-            CommandHandler("play", play),
-            CommandHandler("help", start),
-            CallbackQueryHandler(handle_game, pattern="^snake_game$"),
-            InlineQueryHandler(inline_query)
-        ]
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("play", play))
+        app.add_handler(CommandHandler("top", top_players))
+        app.add_handler(CommandHandler("help", start))
+        app.add_handler(CallbackQueryHandler(game_callback))
 
-        for handler in handlers:
-            application.add_handler(handler)
-
-        print("🤖 Бот запущен!")
-        application.run_polling()
+        logger.info("Bot started successfully")
+        app.run_polling()
 
     except Exception as e:
-        print(f"🚨 Ошибка при запуске: {str(e)}")
+        logger.critical(f"Fatal error: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
-    print("🔄 Запуск бота...")
     main()

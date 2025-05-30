@@ -1,174 +1,391 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Snake Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Snake Game</title>
     <style>
+        :root {
+            --btn-color: #4CAF50;
+            --btn-active: #45a049;
+        }
         body {
             margin: 0;
             padding: 0;
             background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            touch-action: manipulation;
+            font-family: Arial, sans-serif;
             overflow: hidden;
         }
-        canvas {
-            border: 2px solid #333;
-            background: #111;
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
         }
-        #score {
-            position: absolute;
-            top: 10px;
-            left: 10px;
+        canvas {
+            display: block;
+            background: #111;
+            border: 2px solid #333;
+            margin: 10px auto;
+        }
+        #controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 10px;
+            width: 100%;
+            max-width: 300px;
+        }
+        .btn {
+            background: var(--btn-color);
             color: white;
-            font-family: Arial;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            margin: 0 auto;
+        }
+        .btn:active {
+            background: var(--btn-active);
+            transform: scale(0.95);
+        }
+        #score-display {
+            color: white;
+            text-align: center;
             font-size: 20px;
+            padding: 10px;
+        }
+        #leaderboard {
+            color: white;
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+            padding: 10px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 10px;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        @media (max-width: 400px) {
+            canvas {
+                width: 95vw;
+                height: 95vw;
+            }
+            .btn {
+                width: 50px;
+                height: 50px;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="score">Score: 0</div>
-    <canvas id="gameCanvas" width="300" height="300"></canvas>
+    <div id="game-container">
+        <div id="score-display">Очки: 0</div>
+        <canvas id="gameCanvas" width="300" height="300"></canvas>
+
+        <div id="controls">
+            <div></div>
+            <button class="btn" id="up">↑</button>
+            <div></div>
+            <button class="btn" id="left">←</button>
+            <button class="btn" id="down">↓</button>
+            <button class="btn" id="right">→</button>
+        </div>
+
+        <div id="leaderboard">
+            <h3>🏆 Топ игроков:</h3>
+            <ol id="scores-list"></ol>
+        </div>
+
+        <div id="game-over">
+            <h2>Игра окончена!</h2>
+            <p id="final-score">Очки: 0</p>
+            <button id="restart-btn">Играть снова</button>
+        </div>
+    </div>
 
     <script>
+        // Конфигурация игры
+        const config = {
+            initialSpeed: 150,
+            speedIncrease: 5,
+            minSpeed: 50
+        };
+
+        // Элементы игры
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const scoreElement = document.getElementById('score');
-        
         const gridSize = 10;
         const tileCount = canvas.width / gridSize;
-        let score = 0;
-        
-        let snake = [{x: 15 * gridSize, y: 15 * gridSize}];
-        let food = {
-            x: Math.floor(Math.random() * tileCount) * gridSize,
-            y: Math.floor(Math.random() * tileCount) * gridSize
-        };
-        
-        let dx = gridSize;
+
+        // Состояние игры
+        let snake = [];
+        let food = {};
+        let dx = 0;
         let dy = 0;
-        let gameSpeed = 100; // ms
-        let gameLoopId;
+        let score = 0;
+        let gameSpeed = config.initialSpeed;
+        let gameLoopId = null;
+        let isGameOver = false;
+        let playerName = 'Игрок';
 
-        function drawSnake() {
-            ctx.fillStyle = 'green';
-            snake.forEach(segment => {
-                ctx.fillRect(segment.x, segment.y, gridSize, gridSize);
-            });
+        // Элементы интерфейса
+        const scoreDisplay = document.getElementById('score-display');
+        const scoresList = document.getElementById('scores-list');
+        const gameOverDiv = document.getElementById('game-over');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Инициализация IndexedDB
+        const dbRequest = indexedDB.open('SnakeGameDB', 2);
+
+        dbRequest.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('scores')) {
+                const store = db.createObjectStore('scores', {
+                    keyPath: 'id',
+                    autoIncrement: true
+                });
+                store.createIndex('score', 'score', { unique: false });
+                store.createIndex('name', 'name', { unique: false });
+            }
+        };
+
+        // Управление игрой
+        function initGame() {
+            snake = [{x: 15 * gridSize, y: 15 * gridSize}];
+            food = generateFood();
+            dx = gridSize;
+            dy = 0;
+            score = 0;
+            gameSpeed = config.initialSpeed;
+            isGameOver = false;
+
+            scoreDisplay.textContent = `Очки: ${score}`;
+            gameOverDiv.style.display = 'none';
+
+            if (gameLoopId) clearInterval(gameLoopId);
+            gameLoopId = setInterval(gameLoop, gameSpeed);
         }
 
-        function drawFood() {
-            ctx.fillStyle = 'red';
-            ctx.fillRect(food.x, food.y, gridSize, gridSize);
+        function generateFood() {
+            let newFood;
+            do {
+                newFood = {
+                    x: Math.floor(Math.random() * tileCount) * gridSize,
+                    y: Math.floor(Math.random() * tileCount) * gridSize
+                };
+            } while (snake.some(segment =>
+                segment.x === newFood.x && segment.y === newFood.y
+            ));
+
+            return newFood;
         }
 
-        function moveSnake() {
-            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
-            
+        function gameLoop() {
+            if (isGameOver) return;
+
+            const head = {
+                x: snake[0].x + dx,
+                y: snake[0].y + dy
+            };
+
             // Проверка границ
             if (head.x < 0) head.x = canvas.width - gridSize;
             if (head.x >= canvas.width) head.x = 0;
             if (head.y < 0) head.y = canvas.height - gridSize;
             if (head.y >= canvas.height) head.y = 0;
-            
-            // Проверка столкновения с собой
-            if (snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+
+            // Проверка столкновения
+            if (snake.some(segment =>
+                segment.x === head.x && segment.y === head.y
+            )) {
                 endGame();
                 return;
             }
-            
+
+            // Добавление новой головы
             snake.unshift(head);
-            
-            // Проверка съедания пищи
+
+            // Проверка съедения пищи
             if (head.x === food.x && head.y === food.y) {
+                vibrate(50);
                 score++;
-                scoreElement.textContent = `Score: ${score}`;
-                placeFood();
-                
-                // Увеличиваем скорость каждые 5 очков
-                if (score % 5 === 0 && gameSpeed > 50) {
-                    gameSpeed -= 5;
+                scoreDisplay.textContent = `Очки: ${score}`;
+                food = generateFood();
+
+                // Увеличение скорости
+                if (score % 5 === 0 && gameSpeed > config.minSpeed) {
+                    gameSpeed -= config.speedIncrease;
                     clearInterval(gameLoopId);
                     gameLoopId = setInterval(gameLoop, gameSpeed);
                 }
             } else {
                 snake.pop();
             }
+
+            // Отрисовка
+            drawGame();
         }
 
-        function placeFood() {
-            food = {
-                x: Math.floor(Math.random() * tileCount) * gridSize,
-                y: Math.floor(Math.random() * tileCount) * gridSize
-            };
-            
-            // Убедимся, что еда не появляется на змейке
-            while (snake.some(segment => segment.x === food.x && segment.y === food.y)) {
-                food = {
-                    x: Math.floor(Math.random() * tileCount) * gridSize,
-                    y: Math.floor(Math.random() * tileCount) * gridSize
-                };
-            }
+        function drawGame() {
+            // Очистка холста
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Отрисовка змейки
+            ctx.fillStyle = '#4CAF50';
+            snake.forEach(segment => {
+                ctx.fillRect(segment.x, segment.y, gridSize, gridSize);
+            });
+
+            // Отрисовка пищи
+            ctx.fillStyle = '#FF5252';
+            ctx.beginPath();
+            ctx.arc(
+                food.x + gridSize/2,
+                food.y + gridSize/2,
+                gridSize/2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
         }
 
         function endGame() {
+            isGameOver = true;
             clearInterval(gameLoopId);
-            ctx.fillStyle = 'white';
-            ctx.font = '30px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('Game Over!', canvas.width/2, canvas.height/2 - 20);
-            ctx.font = '20px Arial';
-            ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 + 20);
-            
-            // Кнопка "Играть снова" для Telegram WebApp
-            if (window.Telegram && Telegram.WebApp) {
-                const button = document.createElement('button');
-                button.textContent = 'Play Again';
-                button.style.position = 'absolute';
-                button.style.left = '50%';
-                button.style.top = '60%';
-                button.style.transform = 'translateX(-50%)';
-                button.onclick = () => Telegram.WebApp.reload();
-                document.body.appendChild(button);
+
+            finalScoreDisplay.textContent = `Очки: ${score}`;
+            gameOverDiv.style.display = 'block';
+
+            saveScore();
+            loadLeaderboard();
+
+            if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200]);
             }
         }
 
-        function gameLoop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawFood();
-            moveSnake();
-            drawSnake();
+        function vibrate(duration) {
+            if ('vibrate' in navigator) {
+                navigator.vibrate(duration);
+            }
         }
 
-        // Управление
-        document.addEventListener('keydown', e => {
-            if (e.key === 'ArrowUp' && dy !== gridSize) {
-                dx = 0;
-                dy = -gridSize;
-            } else if (e.key === 'ArrowDown' && dy !== -gridSize) {
-                dx = 0;
-                dy = gridSize;
-            } else if (e.key === 'ArrowLeft' && dx !== gridSize) {
-                dx = -gridSize;
-                dy = 0;
-            } else if (e.key === 'ArrowRight' && dx !== -gridSize) {
-                dx = gridSize;
-                dy = 0;
+        function saveScore() {
+            const db = dbRequest.result;
+            const transaction = db.transaction(['scores'], 'readwrite');
+            const store = transaction.objectStore('scores');
+
+            store.add({
+                name: playerName,
+                score: score,
+                date: new Date().toISOString()
+            });
+        }
+
+        function loadLeaderboard() {
+            const db = dbRequest.result;
+            const transaction = db.transaction(['scores'], 'readonly');
+            const store = transaction.objectStore('scores');
+            const index = store.index('score');
+
+            const request = index.openCursor(null, 'prev');
+            const topScores = [];
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor && topScores.length < 10) {
+                    topScores.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    displayLeaderboard(topScores);
+                }
+            };
+        }
+
+        function displayLeaderboard(scores) {
+            scoresList.innerHTML = '';
+            scores.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${index + 1}. ${item.name}: ${item.score}`;
+                scoresList.appendChild(li);
+            });
+        }
+
+        // Обработчики событий
+        function changeDirection(newDx, newDy) {
+            if ((dx === 0 && newDx !== 0) || (dy === 0 && newDy !== 0)) {
+                dx = newDx;
+                dy = newDy;
+                vibrate(20);
             }
+        }
+
+        // Назначение обработчиков
+        document.getElementById('up').addEventListener('click', () => changeDirection(0, -gridSize));
+        document.getElementById('down').addEventListener('click', () => changeDirection(0, gridSize));
+        document.getElementById('left').addEventListener('click', () => changeDirection(-gridSize, 0));
+        document.getElementById('right').addEventListener('click', () => changeDirection(gridSize, 0));
+
+        // Сенсорные события для мобильных
+        ['touchstart', 'touchend'].forEach(event => {
+            document.getElementById('up').addEventListener(event, (e) => {
+                e.preventDefault();
+                changeDirection(0, -gridSize);
+            });
+            document.getElementById('down').addEventListener(event, (e) => {
+                e.preventDefault();
+                changeDirection(0, gridSize);
+            });
+            document.getElementById('left').addEventListener(event, (e) => {
+                e.preventDefault();
+                changeDirection(-gridSize, 0);
+            });
+            document.getElementById('right').addEventListener(event, (e) => {
+                e.preventDefault();
+                changeDirection(gridSize, 0);
+            });
         });
+
+        restartBtn.addEventListener('click', initGame);
 
         // Интеграция с Telegram WebApp
         if (window.Telegram && Telegram.WebApp) {
             Telegram.WebApp.expand();
             Telegram.WebApp.enableClosingConfirmation();
+
+            const user = Telegram.WebApp.initDataUnsafe.user;
+            if (user) {
+                playerName = user.first_name || 'Игрок';
+                if (user.last_name) playerName += ` ${user.last_name}`;
+            }
         }
 
-        // Начало игры
-        placeFood();
-        gameLoopId = setInterval(gameLoop, gameSpeed);
+        // Запуск игры
+        dbRequest.onsuccess = () => {
+            loadLeaderboard();
+            initGame();
+        };
     </script>
 </body>
 </html>
