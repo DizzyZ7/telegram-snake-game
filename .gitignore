@@ -12,6 +12,9 @@ Pipfile
 #PyCharm
 .idea
 .env
+.venv/
+__pycache__/
+*.pyc
 
 # C extensions
 *.so
