@@ -1,121 +1,129 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Telegram Snake Game</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Snake Game</title>
     <style>
         body {
             margin: 0;
             padding: 0;
             background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
             overflow: hidden;
         }
         canvas {
-            display: block;
-            margin: 0 auto;
+            border: 2px solid #333;
             background: #111;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial;
+            font-size: 20px;
         }
     </style>
 </head>
 <body>
+    <div id="score">Score: 0</div>
     <canvas id="gameCanvas" width="300" height="300"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        
         const gridSize = 10;
-        const tileCount = 30;
-
-        let snake = [{x: 15, y: 15}];
-        let dx = 1;
-        let dy = 0;
-        let apple = {x: 5, y: 5};
+        const tileCount = canvas.width / gridSize;
         let score = 0;
-        let speed = 7;
-
-        function gameLoop() {
-            if (isGameOver()) {
-                showGameOver();
-                return;
-            }
-
-            setTimeout(() => {
-                clearCanvas();
-                drawApple();
-                moveSnake();
-                drawSnake();
-                gameLoop();
-            }, 1000 / speed);
-        }
-
-        function clearCanvas() {
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+        
+        let snake = [{x: 15 * gridSize, y: 15 * gridSize}];
+        let food = {
+            x: Math.floor(Math.random() * tileCount) * gridSize,
+            y: Math.floor(Math.random() * tileCount) * gridSize
+        };
+        
+        let dx = gridSize;
+        let dy = 0;
+        let gameSpeed = 100; // ms
+        let gameLoopId;
 
         function drawSnake() {
-            snake.forEach(part => {
-                ctx.fillStyle = 'green';
-                ctx.fillRect(part.x * gridSize, part.y * gridSize, gridSize, gridSize);
+            ctx.fillStyle = 'green';
+            snake.forEach(segment => {
+                ctx.fillRect(segment.x, segment.y, gridSize, gridSize);
             });
         }
 
-        function drawApple() {
+        function drawFood() {
             ctx.fillStyle = 'red';
-            ctx.fillRect(apple.x * gridSize, apple.y * gridSize, gridSize, gridSize);
+            ctx.fillRect(food.x, food.y, gridSize, gridSize);
         }
 
         function moveSnake() {
             const head = {x: snake[0].x + dx, y: snake[0].y + dy};
-
-            // Wrap around screen
-            if (head.x < 0) head.x = tileCount - 1;
-            if (head.x >= tileCount) head.x = 0;
-            if (head.y < 0) head.y = tileCount - 1;
-            if (head.y >= tileCount) head.y = 0;
-
+            
+            // Проверка границ
+            if (head.x < 0) head.x = canvas.width - gridSize;
+            if (head.x >= canvas.width) head.x = 0;
+            if (head.y < 0) head.y = canvas.height - gridSize;
+            if (head.y >= canvas.height) head.y = 0;
+            
+            // Проверка столкновения с собой
+            if (snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                endGame();
+                return;
+            }
+            
             snake.unshift(head);
-
-            if (head.x === apple.x && head.y === apple.y) {
+            
+            // Проверка съедания пищи
+            if (head.x === food.x && head.y === food.y) {
                 score++;
-                placeApple();
+                scoreElement.textContent = `Score: ${score}`;
+                placeFood();
+                
+                // Увеличиваем скорость каждые 5 очков
+                if (score % 5 === 0 && gameSpeed > 50) {
+                    gameSpeed -= 5;
+                    clearInterval(gameLoopId);
+                    gameLoopId = setInterval(gameLoop, gameSpeed);
+                }
             } else {
                 snake.pop();
             }
         }
 
-        function placeApple() {
-            apple = {
-                x: Math.floor(Math.random() * tileCount),
-                y: Math.floor(Math.random() * tileCount)
+        function placeFood() {
+            food = {
+                x: Math.floor(Math.random() * tileCount) * gridSize,
+                y: Math.floor(Math.random() * tileCount) * gridSize
             };
-
-            while (snake.some(part => part.x === apple.x && part.y === apple.y)) {
-                apple = {
-                    x: Math.floor(Math.random() * tileCount),
-                    y: Math.floor(Math.random() * tileCount)
+            
+            // Убедимся, что еда не появляется на змейке
+            while (snake.some(segment => segment.x === food.x && segment.y === food.y)) {
+                food = {
+                    x: Math.floor(Math.random() * tileCount) * gridSize,
+                    y: Math.floor(Math.random() * tileCount) * gridSize
                 };
             }
         }
 
-        function isGameOver() {
-            for (let i = 1; i < snake.length; i++) {
-                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function showGameOver() {
+        function endGame() {
+            clearInterval(gameLoopId);
             ctx.fillStyle = 'white';
             ctx.font = '30px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('Game Over!', canvas.width/2, canvas.height/2 - 20);
             ctx.font = '20px Arial';
-            ctx.fillText(`Score: ${score}`, canvas.width/2, canvas.height/2 + 20);
-
-            // Кнопка "Играть снова" для Telegram
+            ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 + 20);
+            
+            // Кнопка "Играть снова" для Telegram WebApp
             if (window.Telegram && Telegram.WebApp) {
                 const button = document.createElement('button');
                 button.textContent = 'Play Again';
@@ -128,29 +136,39 @@
             }
         }
 
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawFood();
+            moveSnake();
+            drawSnake();
+        }
+
+        // Управление
         document.addEventListener('keydown', e => {
-            if (e.key === 'ArrowUp' && dy !== 1) {
+            if (e.key === 'ArrowUp' && dy !== gridSize) {
                 dx = 0;
-                dy = -1;
-            } else if (e.key === 'ArrowDown' && dy !== -1) {
+                dy = -gridSize;
+            } else if (e.key === 'ArrowDown' && dy !== -gridSize) {
                 dx = 0;
-                dy = 1;
-            } else if (e.key === 'ArrowLeft' && dx !== 1) {
-                dx = -1;
+                dy = gridSize;
+            } else if (e.key === 'ArrowLeft' && dx !== gridSize) {
+                dx = -gridSize;
                 dy = 0;
-            } else if (e.key === 'ArrowRight' && dx !== -1) {
-                dx = 1;
+            } else if (e.key === 'ArrowRight' && dx !== -gridSize) {
+                dx = gridSize;
                 dy = 0;
             }
         });
 
+        // Интеграция с Telegram WebApp
         if (window.Telegram && Telegram.WebApp) {
             Telegram.WebApp.expand();
             Telegram.WebApp.enableClosingConfirmation();
         }
 
-        placeApple();
-        gameLoop();
+        // Начало игры
+        placeFood();
+        gameLoopId = setInterval(gameLoop, gameSpeed);
     </script>
 </body>
 </html>
