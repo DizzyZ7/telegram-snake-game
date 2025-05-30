@@ -5,16 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Snake Game</title>
     <style>
-        :root {
-            --btn-color: #4CAF50;
-            --btn-active: #45a049;
-        }
         body {
             margin: 0;
             padding: 0;
             background: #000;
             touch-action: manipulation;
             font-family: Arial, sans-serif;
+            color: white;
             overflow: hidden;
         }
         #game-container {
@@ -22,12 +19,13 @@
             flex-direction: column;
             align-items: center;
             height: 100vh;
+            padding-top: 10px;
         }
         canvas {
             display: block;
             background: #111;
             border: 2px solid #333;
-            margin: 10px auto;
+            margin-bottom: 10px;
         }
         #controls {
             display: grid;
@@ -38,7 +36,7 @@
             max-width: 300px;
         }
         .btn {
-            background: var(--btn-color);
+            background: #4CAF50;
             color: white;
             border: none;
             border-radius: 50%;
@@ -49,50 +47,45 @@
             align-items: center;
             justify-content: center;
             touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
             user-select: none;
             margin: 0 auto;
         }
         .btn:active {
-            background: var(--btn-active);
+            background: #45a049;
             transform: scale(0.95);
         }
         #score-display {
-            color: white;
-            text-align: center;
             font-size: 20px;
-            padding: 10px;
+            margin-bottom: 10px;
         }
         #leaderboard {
-            color: white;
             width: 100%;
             max-width: 300px;
-            margin: 0 auto;
             padding: 10px;
             background: rgba(0,0,0,0.7);
             border-radius: 10px;
+            margin-top: 10px;
         }
         #game-over {
-            position: absolute;
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: white;
-            text-align: center;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.9);
             padding: 20px;
             border-radius: 10px;
+            text-align: center;
             display: none;
+            z-index: 100;
         }
-        @media (max-width: 400px) {
-            canvas {
-                width: 95vw;
-                height: 95vw;
-            }
-            .btn {
-                width: 50px;
-                height: 50px;
-            }
+        #restart-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 16px;
         }
     </style>
 </head>
@@ -123,29 +116,22 @@
     </div>
 
     <script>
-        // Конфигурация игры
-        const config = {
-            initialSpeed: 150,
-            speedIncrease: 5,
-            minSpeed: 50
-        };
-
-        // Элементы игры
+        // Инициализация игры
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const gridSize = 10;
         const tileCount = canvas.width / gridSize;
 
-        // Состояние игры
         let snake = [];
         let food = {};
         let dx = 0;
         let dy = 0;
         let score = 0;
-        let gameSpeed = config.initialSpeed;
+        let gameSpeed = 150;
         let gameLoopId = null;
         let isGameOver = false;
         let playerName = 'Игрок';
+        let userId = '';
 
         // Элементы интерфейса
         const scoreDisplay = document.getElementById('score-display');
@@ -176,7 +162,7 @@
             dx = gridSize;
             dy = 0;
             score = 0;
-            gameSpeed = config.initialSpeed;
+            gameSpeed = 150;
             isGameOver = false;
 
             scoreDisplay.textContent = `Очки: ${score}`;
@@ -233,8 +219,8 @@
                 food = generateFood();
 
                 // Увеличение скорости
-                if (score % 5 === 0 && gameSpeed > config.minSpeed) {
-                    gameSpeed -= config.speedIncrease;
+                if (score % 5 === 0 && gameSpeed > 50) {
+                    gameSpeed -= 10;
                     clearInterval(gameLoopId);
                     gameLoopId = setInterval(gameLoop, gameSpeed);
                 }
@@ -297,6 +283,7 @@
             const store = transaction.objectStore('scores');
 
             store.add({
+                userId: userId,
                 name: playerName,
                 score: score,
                 date: new Date().toISOString()
@@ -376,8 +363,9 @@
 
             const user = Telegram.WebApp.initDataUnsafe.user;
             if (user) {
-                playerName = user.first_name || 'Игрок';
-                if (user.last_name) playerName += ` ${user.last_name}`;
+                userId = user.id;
+                playerName = user.username ? `@${user.username}` :
+                            `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Игрок';
             }
         }
 
