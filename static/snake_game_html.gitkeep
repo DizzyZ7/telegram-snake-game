@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Snake Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      font-family: Arial, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+    #game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      padding-top: 10px;
+    }
+    canvas {
+      background: #111;
+      border: 2px solid #333;
+      margin-bottom: 10px;
+    }
+    #controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: 100%;
+      max-width: 300px;
+      padding: 10px;
+    }
+    .btn {
+      background: #4CAF50;
+      color: white;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      font-size: 24px;
+      border: none;
+    }
+    .btn:active {
+      background: #45a049;
+    }
+    #score-display {
+      font-size: 20px;
+    }
+    #leaderboard {
+      max-width: 300px;
+      background: rgba(0,0,0,0.7);
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    #game-over {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.9);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      display: none;
+    }
+    #restart-btn {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin-top: 10px;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="score-display">Очки: 0</div>
+    <canvas id="gameCanvas" width="300" height="300"></canvas>
+
+    <div id="controls">
+      <div></div>
+      <button class="btn" id="up">↑</button>
+      <div></div>
+      <button class="btn" id="left">←</button>
+      <button class="btn" id="down">↓</button>
+      <button class="btn" id="right">→</button>
+    </div>
+
+    <div id="leaderboard">
+      <h3>🏆 Топ игроков:</h3>
+      <ol id="scores-list"></ol>
+    </div>
+
+    <div id="game-over">
+      <h2>Игра окончена!</h2>
+      <p id="final-score">Очки: 0</p>
+      <button id="restart-btn">Играть снова</button>
+    </div>
+  </div>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gridSize = 10;
+    const tileCount = canvas.width / gridSize;
+
+    let snake = [];
+    let food = {};
+    let dx = gridSize;
+    let dy = 0;
+    let score = 0;
+    let gameSpeed = 150;
+    let gameLoopId;
+    let isGameOver = false;
+    let userId = '';
+    let playerName = 'Игрок';
+
+    const scoreDisplay = document.getElementById('score-display');
+    const scoresList = document.getElementById('scores-list');
+    const gameOverDiv = document.getElementById('game-over');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const restartBtn = document.getElementById('restart-btn');
+
+    function initGame() {
+      snake = [{ x: 150, y: 150 }];
+      food = generateFood();
+      dx = gridSize;
+      dy = 0;
+      score = 0;
+      gameSpeed = 150;
+      isGameOver = false;
+
+      scoreDisplay.textContent = `Очки: ${score}`;
+      gameOverDiv.style.display = 'none';
+
+      if (gameLoopId) clearInterval(gameLoopId);
+      gameLoopId = setInterval(gameLoop, gameSpeed);
+    }
+
+    function generateFood() {
+      let food;
+      do {
+        food = {
+          x: Math.floor(Math.random() * tileCount) * gridSize,
+          y: Math.floor(Math.random() * tileCount) * gridSize
+        };
+      } while (snake.some(s => s.x === food.x && s.y === food.y));
+      return food;
+    }
+
+    function gameLoop() {
+      const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+      if (head.x < 0) head.x = canvas.width - gridSize;
+      if (head.x >= canvas.width) head.x = 0;
+      if (head.y < 0) head.y = canvas.height - gridSize;
+      if (head.y >= canvas.height) head.y = 0;
+
+      if (snake.some(s => s.x === head.x && s.y === head.y)) {
+        endGame();
+        return;
+      }
+
+      snake.unshift(head);
+
+      if (head.x === food.x && head.y === food.y) {
+        score++;
+        scoreDisplay.textContent = `Очки: ${score}`;
+        food = generateFood();
+        if (score % 5 === 0 && gameSpeed > 50) {
+          gameSpeed -= 10;
+          clearInterval(gameLoopId);
+          gameLoopId = setInterval(gameLoop, gameSpeed);
+        }
+      } else {
+        snake.pop();
+      }
+
+      drawGame();
+    }
+
+    function drawGame() {
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#4CAF50';
+      snake.forEach(part => {
+        ctx.fillRect(part.x, part.y, gridSize, gridSize);
+      });
+
+      ctx.fillStyle = '#FF5252';
+      ctx.beginPath();
+      ctx.arc(food.x + gridSize / 2, food.y + gridSize / 2, gridSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function endGame() {
+      isGameOver = true;
+      clearInterval(gameLoopId);
+
+      finalScoreDisplay.textContent = `Очки: ${score}`;
+      gameOverDiv.style.display = 'block';
+
+      submitScore(score);
+      loadTopFromServer();
+    }
+
+    function submitScore(score) {
+      if (!userId || !playerName) return;
+      fetch("http://localhost:5000/save_score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          username: playerName,
+          score: score
+        })
+      }).catch(err => console.error("Ошибка отправки:", err));
+    }
+
+    async function loadTopFromServer() {
+      try {
+        const res = await fetch("http://localhost:5000/top_scores");
+        const data = await res.json();
+        scoresList.innerHTML = '';
+        data.forEach((item, i) => {
+          const li = document.createElement('li');
+          li.textContent = `${i + 1}. ${item.username}: ${item.score}`;
+          scoresList.appendChild(li);
+        });
+      } catch (err) {
+        scoresList.innerHTML = '<li>Ошибка загрузки</li>';
+      }
+    }
+
+    function changeDirection(newDx, newDy) {
+      if ((dx === 0 && newDx !== 0) || (dy === 0 && newDy !== 0)) {
+        dx = newDx;
+        dy = newDy;
+      }
+    }
+
+    document.getElementById('up').addEventListener('click', () => changeDirection(0, -gridSize));
+    document.getElementById('down').addEventListener('click', () => changeDirection(0, gridSize));
+    document.getElementById('left').addEventListener('click', () => changeDirection(-gridSize, 0));
+    document.getElementById('right').addEventListener('click', () => changeDirection(gridSize, 0));
+    restartBtn.addEventListener('click', initGame);
+
+    if (window.Telegram && Telegram.WebApp) {
+      Telegram.WebApp.expand();
+      Telegram.WebApp.enableClosingConfirmation();
+      const user = Telegram.WebApp.initDataUnsafe.user;
+      if (user) {
+        userId = user.id;
+        playerName = user.username ? `@${user.username}` :
+          `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Игрок';
+      }
+    }
+
+    window.addEventListener('load', () => {
+      loadTopFromServer();
+      initGame();
+    });
+  </script>
+</body>
+</html>
