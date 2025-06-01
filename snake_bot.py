@@ -9,7 +9,6 @@ from telegram.ext import (
     ContextTypes
 )
 
-# Настройка логов
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
@@ -17,11 +16,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Загрузка токена из .env
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Инициализация базы данных
 def init_db():
     conn = sqlite3.connect('scores.db')
     cursor = conn.cursor()
@@ -39,7 +36,6 @@ def init_db():
 
 init_db()
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     name = f"@{user.username}" if user.username else user.first_name
@@ -52,7 +48,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode='HTML'
     )
 
-# Команда /play
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         await update.message.reply_text(
@@ -68,7 +63,6 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error(f"Ошибка запуска игры: {e}", exc_info=True)
         await update.message.reply_text("⚠️ Не удалось запустить игру.")
 
-# Команда /top
 async def top_players(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = sqlite3.connect('scores.db')
     cursor = conn.cursor()
@@ -92,7 +86,6 @@ async def top_players(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text(text, parse_mode='HTML')
 
-# Команда /mytop
 async def my_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = sqlite3.connect('scores.db')
     cursor = conn.cursor()
@@ -116,7 +109,6 @@ async def my_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text(text, parse_mode='HTML')
 
-# Команда /last
 async def last_games(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn = sqlite3.connect('scores.db')
     cursor = conn.cursor()
@@ -139,7 +131,6 @@ async def last_games(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     await update.message.reply_text(text, parse_mode='HTML')
 
-# Основной запуск
 def main():
     if not TOKEN:
         logger.critical("❌ Токен не найден! Проверь .env")
