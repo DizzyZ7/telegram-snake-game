@@ -90,290 +90,245 @@
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <div id="score-display">Очки: 0</div>
-        <canvas id="gameCanvas" width="300" height="300"></canvas>
+<div id="game-container">
+    <div id="score-display">Очки: 0</div>
+    <canvas id="gameCanvas" width="300" height="300"></canvas>
 
-        <div id="controls">
-            <div></div>
-            <button class="btn" id="up">↑</button>
-            <div></div>
-            <button class="btn" id="left">←</button>
-            <button class="btn" id="down">↓</button>
-            <button class="btn" id="right">→</button>
-        </div>
-
-        <div id="leaderboard">
-            <h3>🏆 Топ игроков:</h3>
-            <ol id="scores-list"></ol>
-        </div>
-
-        <div id="game-over">
-            <h2>Игра окончена!</h2>
-            <p id="final-score">Очки: 0</p>
-            <button id="restart-btn">Играть снова</button>
-        </div>
+    <div id="controls">
+        <div></div>
+        <button class="btn" id="up">↑</button>
+        <div></div>
+        <button class="btn" id="left">←</button>
+        <button class="btn" id="down">↓</button>
+        <button class="btn" id="right">→</button>
     </div>
 
-    <script>
-        // Инициализация игры
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const gridSize = 10;
-        const tileCount = canvas.width / gridSize;
+    <div id="leaderboard">
+        <h3>🏆 Топ игроков:</h3>
+        <ol id="scores-list"></ol>
+    </div>
 
-        let snake = [];
-        let food = {};
-        let dx = 0;
-        let dy = 0;
-        let score = 0;
-        let gameSpeed = 150;
-        let gameLoopId = null;
-        let isGameOver = false;
-        let playerName = 'Игрок';
-        let userId = '';
+    <div id="game-over">
+        <h2>Игра окончена!</h2>
+        <p id="final-score">Очки: 0</p>
+        <button id="restart-btn">Играть снова</button>
+    </div>
+</div>
 
-        // Элементы интерфейса
-        const scoreDisplay = document.getElementById('score-display');
-        const scoresList = document.getElementById('scores-list');
-        const gameOverDiv = document.getElementById('game-over');
-        const finalScoreDisplay = document.getElementById('final-score');
-        const restartBtn = document.getElementById('restart-btn');
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const gridSize = 10;
+    const tileCount = canvas.width / gridSize;
 
-        // Инициализация IndexedDB
-        const dbRequest = indexedDB.open('SnakeGameDB', 2);
+    let snake = [];
+    let food = {};
+    let dx = 0;
+    let dy = 0;
+    let score = 0;
+    let gameSpeed = 150;
+    let gameLoopId = null;
+    let isGameOver = false;
+    let playerName = 'Игрок';
+    let userId = '';
 
-        dbRequest.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains('scores')) {
-                const store = db.createObjectStore('scores', {
-                    keyPath: 'id',
-                    autoIncrement: true
-                });
-                store.createIndex('score', 'score', { unique: false });
-                store.createIndex('name', 'name', { unique: false });
-            }
+    const scoreDisplay = document.getElementById('score-display');
+    const scoresList = document.getElementById('scores-list');
+    const gameOverDiv = document.getElementById('game-over');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const restartBtn = document.getElementById('restart-btn');
+
+    function initGame() {
+        snake = [{x: 15 * gridSize, y: 15 * gridSize}];
+        food = generateFood();
+        dx = gridSize;
+        dy = 0;
+        score = 0;
+        gameSpeed = 150;
+        isGameOver = false;
+
+        scoreDisplay.textContent = `Очки: ${score}`;
+        gameOverDiv.style.display = 'none';
+
+        if (gameLoopId) clearInterval(gameLoopId);
+        gameLoopId = setInterval(gameLoop, gameSpeed);
+    }
+
+    function generateFood() {
+        let newFood;
+        do {
+            newFood = {
+                x: Math.floor(Math.random() * tileCount) * gridSize,
+                y: Math.floor(Math.random() * tileCount) * gridSize
+            };
+        } while (snake.some(segment =>
+            segment.x === newFood.x && segment.y === newFood.y
+        ));
+        return newFood;
+    }
+
+    function gameLoop() {
+        if (isGameOver) return;
+
+        const head = {
+            x: snake[0].x + dx,
+            y: snake[0].y + dy
         };
 
-        // Управление игрой
-        function initGame() {
-            snake = [{x: 15 * gridSize, y: 15 * gridSize}];
-            food = generateFood();
-            dx = gridSize;
-            dy = 0;
-            score = 0;
-            gameSpeed = 150;
-            isGameOver = false;
+        if (head.x < 0) head.x = canvas.width - gridSize;
+        if (head.x >= canvas.width) head.x = 0;
+        if (head.y < 0) head.y = canvas.height - gridSize;
+        if (head.y >= canvas.height) head.y = 0;
 
+        if (snake.some(segment =>
+            segment.x === head.x && segment.y === head.y
+        )) {
+            endGame();
+            return;
+        }
+
+        snake.unshift(head);
+
+        if (head.x === food.x && head.y === food.y) {
+            vibrate(50);
+            score++;
             scoreDisplay.textContent = `Очки: ${score}`;
-            gameOverDiv.style.display = 'none';
+            food = generateFood();
 
-            if (gameLoopId) clearInterval(gameLoopId);
-            gameLoopId = setInterval(gameLoop, gameSpeed);
+            if (score % 5 === 0 && gameSpeed > 50) {
+                gameSpeed -= 10;
+                clearInterval(gameLoopId);
+                gameLoopId = setInterval(gameLoop, gameSpeed);
+            }
+        } else {
+            snake.pop();
         }
 
-        function generateFood() {
-            let newFood;
-            do {
-                newFood = {
-                    x: Math.floor(Math.random() * tileCount) * gridSize,
-                    y: Math.floor(Math.random() * tileCount) * gridSize
-                };
-            } while (snake.some(segment =>
-                segment.x === newFood.x && segment.y === newFood.y
-            ));
+        drawGame();
+    }
 
-            return newFood;
+    function drawGame() {
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#4CAF50';
+        snake.forEach(segment => {
+            ctx.fillRect(segment.x, segment.y, gridSize, gridSize);
+        });
+
+        ctx.fillStyle = '#FF5252';
+        ctx.beginPath();
+        ctx.arc(food.x + gridSize/2, food.y + gridSize/2, gridSize/2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function endGame() {
+        isGameOver = true;
+        clearInterval(gameLoopId);
+
+        finalScoreDisplay.textContent = `Очки: ${score}`;
+        gameOverDiv.style.display = 'block';
+
+        submitScore(score);
+        loadTopFromServer();
+        vibrate(200);
+    }
+
+    function changeDirection(newDx, newDy) {
+        if ((dx === 0 && newDx !== 0) || (dy === 0 && newDy !== 0)) {
+            dx = newDx;
+            dy = newDy;
+            vibrate(20);
         }
+    }
 
-        function gameLoop() {
-            if (isGameOver) return;
+    function vibrate(duration) {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(duration);
+        }
+    }
 
-            const head = {
-                x: snake[0].x + dx,
-                y: snake[0].y + dy
-            };
+    function submitScore(score) {
+        if (!userId || !playerName) return;
 
-            // Проверка границ
-            if (head.x < 0) head.x = canvas.width - gridSize;
-            if (head.x >= canvas.width) head.x = 0;
-            if (head.y < 0) head.y = canvas.height - gridSize;
-            if (head.y >= canvas.height) head.y = 0;
+        fetch("http://localhost:5000/save_score", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                user_id: userId,
+                username: playerName,
+                score: score
+            })
+        }).catch(err => {
+            console.error("❌ Ошибка отправки:", err);
+        });
+    }
 
-            // Проверка столкновения
-            if (snake.some(segment =>
-                segment.x === head.x && segment.y === head.y
-            )) {
-                endGame();
+    async function loadTopFromServer() {
+        try {
+            const res = await fetch('http://localhost:5000/top_scores');
+            const data = await res.json();
+
+            scoresList.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                scoresList.innerHTML = '<li>Нет данных</li>';
                 return;
             }
 
-            // Добавление новой головы
-            snake.unshift(head);
-
-            // Проверка съедения пищи
-            if (head.x === food.x && head.y === food.y) {
-                vibrate(50);
-                score++;
-                scoreDisplay.textContent = `Очки: ${score}`;
-                food = generateFood();
-
-                // Увеличение скорости
-                if (score % 5 === 0 && gameSpeed > 50) {
-                    gameSpeed -= 10;
-                    clearInterval(gameLoopId);
-                    gameLoopId = setInterval(gameLoop, gameSpeed);
-                }
-            } else {
-                snake.pop();
-            }
-
-            // Отрисовка
-            drawGame();
-        }
-
-        function drawGame() {
-            // Очистка холста
-            ctx.fillStyle = '#111';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Отрисовка змейки
-            ctx.fillStyle = '#4CAF50';
-            snake.forEach(segment => {
-                ctx.fillRect(segment.x, segment.y, gridSize, gridSize);
-            });
-
-            // Отрисовка пищи
-            ctx.fillStyle = '#FF5252';
-            ctx.beginPath();
-            ctx.arc(
-                food.x + gridSize/2,
-                food.y + gridSize/2,
-                gridSize/2,
-                0,
-                Math.PI * 2
-            );
-            ctx.fill();
-        }
-
-        function endGame() {
-            isGameOver = true;
-            clearInterval(gameLoopId);
-
-            finalScoreDisplay.textContent = `Очки: ${score}`;
-            gameOverDiv.style.display = 'block';
-
-            saveScore();
-            loadLeaderboard();
-
-            if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200]);
-            }
-        }
-
-        function vibrate(duration) {
-            if ('vibrate' in navigator) {
-                navigator.vibrate(duration);
-            }
-        }
-
-        function saveScore() {
-            const db = dbRequest.result;
-            const transaction = db.transaction(['scores'], 'readwrite');
-            const store = transaction.objectStore('scores');
-
-            store.add({
-                userId: userId,
-                name: playerName,
-                score: score,
-                date: new Date().toISOString()
-            });
-        }
-
-        function loadLeaderboard() {
-            const db = dbRequest.result;
-            const transaction = db.transaction(['scores'], 'readonly');
-            const store = transaction.objectStore('scores');
-            const index = store.index('score');
-
-            const request = index.openCursor(null, 'prev');
-            const topScores = [];
-
-            request.onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (cursor && topScores.length < 10) {
-                    topScores.push(cursor.value);
-                    cursor.continue();
-                } else {
-                    displayLeaderboard(topScores);
-                }
-            };
-        }
-
-        function displayLeaderboard(scores) {
-            scoresList.innerHTML = '';
-            scores.forEach((item, index) => {
+            data.forEach((player, index) => {
                 const li = document.createElement('li');
-                li.textContent = `${index + 1}. ${item.name}: ${item.score}`;
+                li.textContent = `${index + 1}. ${player.username}: ${player.score}`;
                 scoresList.appendChild(li);
             });
+        } catch (err) {
+            scoresList.innerHTML = '<li>Ошибка загрузки</li>';
+            console.error("❌ Ошибка загрузки топа:", err);
         }
+    }
 
-        // Обработчики событий
-        function changeDirection(newDx, newDy) {
-            if ((dx === 0 && newDx !== 0) || (dy === 0 && newDy !== 0)) {
-                dx = newDx;
-                dy = newDy;
-                vibrate(20);
-            }
-        }
+    document.getElementById('up').addEventListener('click', () => changeDirection(0, -gridSize));
+    document.getElementById('down').addEventListener('click', () => changeDirection(0, gridSize));
+    document.getElementById('left').addEventListener('click', () => changeDirection(-gridSize, 0));
+    document.getElementById('right').addEventListener('click', () => changeDirection(gridSize, 0));
+    restartBtn.addEventListener('click', initGame);
 
-        // Назначение обработчиков
-        document.getElementById('up').addEventListener('click', () => changeDirection(0, -gridSize));
-        document.getElementById('down').addEventListener('click', () => changeDirection(0, gridSize));
-        document.getElementById('left').addEventListener('click', () => changeDirection(-gridSize, 0));
-        document.getElementById('right').addEventListener('click', () => changeDirection(gridSize, 0));
-
-        // Сенсорные события для мобильных
-        ['touchstart', 'touchend'].forEach(event => {
-            document.getElementById('up').addEventListener(event, (e) => {
-                e.preventDefault();
-                changeDirection(0, -gridSize);
-            });
-            document.getElementById('down').addEventListener(event, (e) => {
-                e.preventDefault();
-                changeDirection(0, gridSize);
-            });
-            document.getElementById('left').addEventListener(event, (e) => {
-                e.preventDefault();
-                changeDirection(-gridSize, 0);
-            });
-            document.getElementById('right').addEventListener(event, (e) => {
-                e.preventDefault();
-                changeDirection(gridSize, 0);
-            });
+    ['touchstart', 'touchend'].forEach(event => {
+        document.getElementById('up').addEventListener(event, (e) => {
+            e.preventDefault();
+            changeDirection(0, -gridSize);
         });
+        document.getElementById('down').addEventListener(event, (e) => {
+            e.preventDefault();
+            changeDirection(0, gridSize);
+        });
+        document.getElementById('left').addEventListener(event, (e) => {
+            e.preventDefault();
+            changeDirection(-gridSize, 0);
+        });
+        document.getElementById('right').addEventListener(event, (e) => {
+            e.preventDefault();
+            changeDirection(gridSize, 0);
+        });
+    });
 
-        restartBtn.addEventListener('click', initGame);
+    if (window.Telegram && Telegram.WebApp) {
+        Telegram.WebApp.expand();
+        Telegram.WebApp.enableClosingConfirmation();
 
-        // Интеграция с Telegram WebApp
-        if (window.Telegram && Telegram.WebApp) {
-            Telegram.WebApp.expand();
-            Telegram.WebApp.enableClosingConfirmation();
-
-            const user = Telegram.WebApp.initDataUnsafe.user;
-            if (user) {
-                userId = user.id;
-                playerName = user.username ? `@${user.username}` :
-                            `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Игрок';
-            }
+        const user = Telegram.WebApp.initDataUnsafe.user;
+        if (user) {
+            userId = user.id;
+            playerName = user.username ? `@${user.username}` :
+                `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Игрок';
         }
+    }
 
-        // Запуск игры
-        dbRequest.onsuccess = () => {
-            loadLeaderboard();
-            initGame();
-        };
-    </script>
+    window.addEventListener('load', () => {
+        loadTopFromServer();
+        initGame();
+    });
+</script>
 </body>
 </html>
